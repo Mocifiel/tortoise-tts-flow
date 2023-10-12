@@ -154,7 +154,10 @@ def do_spectrogram_diffusion(diffusion_model, diffuser, latents, conditioning_la
         precomputed_embeddings = diffusion_model.timestep_independent(latents, conditioning_latents, output_seq_len, False)
 
         noise = torch.randn(output_shape, device=latents.device) * temperature
-        mel = diffuser.p_sample_loop(diffusion_model, output_shape, noise=noise,
+        # mel = diffuser.p_sample_loop(diffusion_model, output_shape, noise=noise,
+        #                               model_kwargs={'precomputed_aligned_embeddings': precomputed_embeddings},
+        #                              progress=verbose)
+        mel = diffuser.p_sample_flow(diffusion_model, output_shape, noise=noise,
                                       model_kwargs={'precomputed_aligned_embeddings': precomputed_embeddings},
                                      progress=verbose)
         return denormalize_tacotron_mel(mel)[:,:,:output_seq_len]
@@ -344,7 +347,7 @@ class TextToSpeech:
             'ultra_fast': {'num_autoregressive_samples': 16, 'diffusion_iterations': 30, 'cond_free': False},
             'fast': {'num_autoregressive_samples': 96, 'diffusion_iterations': 80},
             'standard': {'num_autoregressive_samples': 256, 'diffusion_iterations': 200},
-            'high_quality': {'num_autoregressive_samples': 256, 'diffusion_iterations': 600},
+            'high_quality': {'num_autoregressive_samples': 256, 'diffusion_iterations': 10},
         }
         settings.update(presets[preset])
         settings.update(kwargs) # allow overriding of preset settings with kwargs

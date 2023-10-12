@@ -575,6 +575,77 @@ class GaussianDiffusion:
         ):
             final = sample
         return final["sample"]
+    
+    def p_sample_flow(
+        self,
+        model,
+        shape,
+        noise=None,
+        clip_denoised=True,
+        denoised_fn=None,
+        cond_fn=None,
+        model_kwargs=None,
+        device=None,
+        progress=False,
+    ):
+        """
+        Generate samples from the model.
+
+        :param model: the model module.
+        :param shape: the shape of the samples, (N, C, H, W).
+        :param noise: if specified, the noise from the encoder to sample.
+                      Should be of the same shape as `shape`.
+        :param clip_denoised: if True, clip x_start predictions to [-1, 1].
+        :param denoised_fn: if not None, a function which applies to the
+            x_start prediction before it is used to sample.
+        :param cond_fn: if not None, this is a gradient function that acts
+                        similarly to the model.
+        :param model_kwargs: if not None, a dict of extra keyword arguments to
+            pass to the model. This can be used for conditioning.
+        :param device: if specified, the device to create the samples on.
+                       If not specified, use a model parameter's device.
+        :param progress: if True, show a tqdm progress bar.
+        :return: a non-differentiable batch of samples.
+        """
+        if device is None:
+            device = next(model.parameters()).device
+        assert isinstance(shape, (tuple, list))
+        if noise is not None:
+            x_t = noise
+        else:
+            x_t = th.randn(*shape, device=device)
+        
+
+        sol = [] # store the samples
+        t_span = th.linspace(0, 1, self.num_timesteps + 1, device=device)
+        t, _, dt = t_span[0], t_span[-1], t_span[1] - t_span[0]
+        steps = 1
+        while steps <= len(t_span) - 1:
+            t_batch = th.tensor([t] * shape[0], device=device) 
+            model_output = model(x_t, t_batch, **model_kwargs)
+            if self.conditioning_free:
+                model_output_no_conditioning = model(x_t, t_batch, conditioning_free=True, **model_kwargs)
+            B, C = x_t.shape[:2]
+            assert model_output.shape == (B, C * 2, *x_t.shape[2:])
+            model_output, model_var_values = th.split(model_output, C, dim=1)
+            if self.conditioning_free:
+                model_output_no_conditioning, _ = th.split(model_output_no_conditioning, C, dim=1)
+            if self.conditioning_free:
+                if self.ramp_conditioning_free:
+                    assert t_batch.shape[0] == 1  # This should only be used in inference.
+                    cfk = self.conditioning_free_k * t
+                else:
+                    cfk = self.conditioning_free_k
+            model_output = (1 + cfk) * model_output - cfk * model_output_no_conditioning
+
+            x_t = x_t + dt * model_output
+            t = t + dt
+            sol.append(x_t)
+            if steps < len(t_span) - 1:
+                dt = t_span[steps + 1] - t
+            steps += 1
+
+        return sol[-1]
 
     def p_sample_loop_progressive(
         self,
