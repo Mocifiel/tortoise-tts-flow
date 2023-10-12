@@ -291,7 +291,7 @@ class DiffusionTts(nn.Module):
 
             unused_params.append(self.unconditioned_embedding)
 
-        time_emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
+        time_emb = self.time_embed(timestep_embedding(timesteps, self.model_channels,scale=1000))
         code_emb = self.conditioning_timestep_integrator(code_emb, time_emb)
         x = self.inp_block(x)
         x = torch.cat([x, code_emb], dim=1)
