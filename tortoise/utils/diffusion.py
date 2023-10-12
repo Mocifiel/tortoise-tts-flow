@@ -620,7 +620,7 @@ class GaussianDiffusion:
         t_span = th.linspace(0, 1, self.num_timesteps + 1, device=device)
         t, _, dt = t_span[0], t_span[-1], t_span[1] - t_span[0]
         steps = 1
-        while steps <= len(t_span) - 1:
+        for t in tqdm(t_span[:-1], disable=not progress):
             t_batch = th.tensor([t] * shape[0], device=device) 
             model_output = model(x_t, t_batch, **model_kwargs)
             if self.conditioning_free:
@@ -639,11 +639,8 @@ class GaussianDiffusion:
             model_output = (1 + cfk) * model_output - cfk * model_output_no_conditioning
 
             x_t = x_t + dt * model_output
-            t = t + dt
             sol.append(x_t)
-            if steps < len(t_span) - 1:
-                dt = t_span[steps + 1] - t
-            steps += 1
+
 
         return sol[-1]
 
