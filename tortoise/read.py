@@ -4,6 +4,7 @@ from time import time
 
 import torch
 import torchaudio
+import numpy as np
 
 from api import TextToSpeech, MODELS_DIR
 from utils.audio import load_audio, load_voices
@@ -16,7 +17,7 @@ if __name__ == '__main__':
     parser.add_argument('--voice', type=str, help='Selects the voice to use for generation. See options in voices/ directory (and add your own!) '
                                                  'Use the & character to join two voices together. Use a comma to perform inference on multiple voices.', default='pat')
     parser.add_argument('--output_path', type=str, help='Where to store outputs.', default='results/longform/')
-    parser.add_argument('--output_name', type=str, help='How to name the output file', default='combined.wav')
+    parser.add_argument('--output_name', type=str, help='How to name the output file', default='combined')
     parser.add_argument('--preset', type=str, help='Which voice preset to use.', default='standard')
     parser.add_argument('--regenerate', type=str, help='Comma-separated list of clip numbers to re-generate, or nothing.', default=None)
     parser.add_argument('--candidates', type=int, help='How many output candidates to produce per-voice. Only the first candidate is actually used in the final product, the others can be used manually.', default=1)
@@ -67,11 +68,14 @@ if __name__ == '__main__':
             if regenerate is not None and j not in regenerate:
                 all_parts.append(load_audio(os.path.join(voice_outpath, f'{j}.wav'), 24000))
                 continue
-            gen = tts.tts_with_preset(text, voice_samples=voice_samples, conditioning_latents=conditioning_latents,
+            gen,mel = tts.tts_with_preset(text, voice_samples=voice_samples, conditioning_latents=conditioning_latents,
                                       preset=args.preset, k=args.candidates, use_deterministic_seed=seed)
+            print(mel.shape)
             if args.candidates == 1:
                 audio_ = gen.squeeze(0).cpu()
                 torchaudio.save(os.path.join(voice_outpath, f'{j}.wav'), audio_, 24000)
+                np.save(os.path.join(voice_outpath,f'{j}_mel.npy'),mel.squeeze().cpu().numpy())
+
             else:
                 candidate_dir = os.path.join(voice_outpath, str(j))
                 os.makedirs(candidate_dir, exist_ok=True)

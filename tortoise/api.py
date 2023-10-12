@@ -8,7 +8,7 @@ import torch
 import torch.nn.functional as F
 import progressbar
 import torchaudio
-
+import numpy as np
 from tortoise.models.classifier import AudioMiniEncoderWithClassifierHead
 from tortoise.models.diffusion_decoder import DiffusionTts
 from tortoise.models.autoregressive import UnifiedVoice
@@ -224,7 +224,7 @@ class TextToSpeech:
         self.models_dir = models_dir
         self.autoregressive_batch_size = pick_best_batch_size_for_gpu() if autoregressive_batch_size is None else autoregressive_batch_size
         self.enable_redaction = enable_redaction
-        self.device = torch.device('cuda' if torch.cuda.is_available() else'cpu')
+        self.device = torch.device('cuda:2' if torch.cuda.is_available() else'cpu')
         if torch.backends.mps.is_available():
             self.device = torch.device('mps')
         if self.enable_redaction:
@@ -336,15 +336,15 @@ class TextToSpeech:
             'high_quality': Use if you want the absolute best. This is not really worth the compute, though.
         """
         # Use generally found best tuning knobs for generation.
-        settings = {'temperature': .8, 'length_penalty': 1.0, 'repetition_penalty': 2.0,
-                    'top_p': .8,
+        settings = {'temperature': .2, 'length_penalty': 1.0, 'repetition_penalty': 4.0,
+                    'top_p': .1,
                     'cond_free_k': 2.0, 'diffusion_temperature': 1.0}
         # Presets are defined here.
         presets = {
             'ultra_fast': {'num_autoregressive_samples': 16, 'diffusion_iterations': 30, 'cond_free': False},
             'fast': {'num_autoregressive_samples': 96, 'diffusion_iterations': 80},
             'standard': {'num_autoregressive_samples': 256, 'diffusion_iterations': 200},
-            'high_quality': {'num_autoregressive_samples': 256, 'diffusion_iterations': 400},
+            'high_quality': {'num_autoregressive_samples': 256, 'diffusion_iterations': 600},
         }
         settings.update(presets[preset])
         settings.update(kwargs) # allow overriding of preset settings with kwargs
@@ -613,7 +613,7 @@ class TextToSpeech:
             if return_deterministic_state:
                 return res, (deterministic_seed, text, voice_samples, conditioning_latents)
             else:
-                return res
+                return res,mel
     def deterministic_state(self, seed=None):
         """
         Sets the random seeds that tortoise uses to the current time() and returns that seed so results can be
