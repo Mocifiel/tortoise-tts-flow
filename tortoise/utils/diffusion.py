@@ -1172,7 +1172,7 @@ class SpacedDiffusion(GaussianDiffusion):
         self.use_timesteps = set(use_timesteps)
         self.timestep_map = []
         self.original_num_steps = len(kwargs["betas"])
-
+        print('initiated spacediffusion object')
         # base_diffusion = GaussianDiffusion(**kwargs)  # pylint: disable=missing-kwoa
         # last_alpha_cumprod = 1.0
         # new_betas = []
@@ -1182,6 +1182,7 @@ class SpacedDiffusion(GaussianDiffusion):
         #         last_alpha_cumprod = alpha_cumprod
         #         self.timestep_map.append(i)
         # kwargs["betas"] = np.array(new_betas)
+        print('where is p_sample_flow?')
         
 
     def p_mean_variance(
