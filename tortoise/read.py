@@ -28,7 +28,7 @@ if __name__ == '__main__':
     parser.add_argument('--use_deepspeed', type=bool, help='Use deepspeed for speed bump.', default=False)
     parser.add_argument('--kv_cache', type=bool, help='If you disable this please wait for a long a time to get the output', default=True)
     parser.add_argument('--half', type=bool, help="float16(half) precision inference if True it's faster and take less vram and ram", default=True)
-
+    parser.add_argument('--freeze_ar',action = 'store_true', help="whether to freeze the autoregressive output")
 
     args = parser.parse_args()
     if torch.backends.mps.is_available():
@@ -68,8 +68,9 @@ if __name__ == '__main__':
             if regenerate is not None and j not in regenerate:
                 all_parts.append(load_audio(os.path.join(voice_outpath, f'{j}.wav'), 24000))
                 continue
+            print(args.freeze_ar)
             gen,mel = tts.tts_with_preset(text, voice_samples=voice_samples, conditioning_latents=conditioning_latents,
-                                      preset=args.preset, k=args.candidates, use_deterministic_seed=seed)
+                                      preset=args.preset, k=args.candidates, use_deterministic_seed=seed, voice_outpath = voice_outpath, index = j,freeze_ar = args.freeze_ar)
             print(mel.shape)
             if args.candidates == 1:
                 audio_ = gen.squeeze(0).cpu()
