@@ -636,7 +636,7 @@ class GaussianDiffusion:
                     cfk = self.conditioning_free_k * t
                 else:
                     cfk = self.conditioning_free_k
-            model_output = (1 + cfk) * model_output - cfk * model_output_no_conditioning
+                model_output = (1 + cfk) * model_output - cfk * model_output_no_conditioning
 
             x_t = x_t + dt * model_output
             sol.append(x_t)

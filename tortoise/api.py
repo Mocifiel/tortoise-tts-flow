@@ -154,12 +154,12 @@ def do_spectrogram_diffusion(diffusion_model, diffuser, latents, conditioning_la
         precomputed_embeddings = diffusion_model.timestep_independent(latents, conditioning_latents, output_seq_len, False)
 
         noise = torch.randn(output_shape, device=latents.device) * temperature
-        mel = diffuser.p_sample_loop(diffusion_model, output_shape, noise=noise,
-                                      model_kwargs={'precomputed_aligned_embeddings': precomputed_embeddings},
-                                     progress=verbose)
-        # mel = diffuser.p_sample_flow(diffusion_model, output_shape, noise=noise,
+        # mel = diffuser.p_sample_loop(diffusion_model, output_shape, noise=noise,
         #                               model_kwargs={'precomputed_aligned_embeddings': precomputed_embeddings},
         #                              progress=verbose)
+        mel = diffuser.p_sample_flow(diffusion_model, output_shape, noise=noise,
+                                      model_kwargs={'precomputed_aligned_embeddings': precomputed_embeddings},
+                                     progress=verbose)
         return denormalize_tacotron_mel(mel)[:,:,:output_seq_len]
 
 
@@ -227,7 +227,7 @@ class TextToSpeech:
         self.models_dir = models_dir
         self.autoregressive_batch_size = pick_best_batch_size_for_gpu() if autoregressive_batch_size is None else autoregressive_batch_size
         self.enable_redaction = enable_redaction
-        self.device = torch.device('cuda:0' if torch.cuda.is_available() else'cpu')
+        self.device = torch.device('cuda:1' if torch.cuda.is_available() else'cpu')
         if torch.backends.mps.is_available():
             self.device = torch.device('mps')
         if self.enable_redaction:
@@ -347,7 +347,7 @@ class TextToSpeech:
             'ultra_fast': {'num_autoregressive_samples': 16, 'diffusion_iterations': 30, 'cond_free': False},
             'fast': {'num_autoregressive_samples': 96, 'diffusion_iterations': 80},
             'standard': {'num_autoregressive_samples': 256, 'diffusion_iterations': 200},
-            'high_quality': {'num_autoregressive_samples': 256, 'diffusion_iterations': 600},
+            'high_quality': {'num_autoregressive_samples': 256, 'diffusion_iterations': 40, 'cond_free': False},
         }
         settings.update(presets[preset])
         settings.update(kwargs) # allow overriding of preset settings with kwargs
