@@ -29,6 +29,7 @@ if __name__ == '__main__':
     parser.add_argument('--kv_cache', type=bool, help='If you disable this please wait for a long a time to get the output', default=True)
     parser.add_argument('--half', type=bool, help="float16(half) precision inference if True it's faster and take less vram and ram", default=True)
     parser.add_argument('--freeze_ar',action = 'store_true', help="whether to freeze the autoregressive output")
+    parser.add_argument('--flow',action = 'store_true',help = 'whether to use flow matching model')
 
     args = parser.parse_args()
     if torch.backends.mps.is_available():
