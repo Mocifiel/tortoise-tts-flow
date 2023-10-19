@@ -144,7 +144,7 @@ def fix_autoregressive_output(codes, stop_token, complain=True):
     return codes
 
 
-def do_spectrogram_diffusion(diffusion_model, diffuser, latents, conditioning_latents, temperature=1, verbose=True):
+def do_spectrogram_diffusion(diffusion_model, diffuser, latents, conditioning_latents, temperature=1, flow = False, verbose=True):
     """
     Uses the specified diffusion model to convert discrete codes into a spectrogram.
     """
@@ -154,12 +154,15 @@ def do_spectrogram_diffusion(diffusion_model, diffuser, latents, conditioning_la
         precomputed_embeddings = diffusion_model.timestep_independent(latents, conditioning_latents, output_seq_len, False)
 
         noise = torch.randn(output_shape, device=latents.device) * temperature
-        # mel = diffuser.p_sample_loop(diffusion_model, output_shape, noise=noise,
-        #                               model_kwargs={'precomputed_aligned_embeddings': precomputed_embeddings},
-        #                              progress=verbose)
-        mel = diffuser.p_sample_flow(diffusion_model, output_shape, noise=noise,
+        if flow: 
+            mel = diffuser.p_sample_flow(diffusion_model, output_shape, noise=noise,
                                       model_kwargs={'precomputed_aligned_embeddings': precomputed_embeddings},
                                      progress=verbose)
+        else:
+            mel = diffuser.p_sample_loop(diffusion_model, output_shape, noise=noise,
+                                      model_kwargs={'precomputed_aligned_embeddings': precomputed_embeddings},
+                                     progress=verbose)
+        
         return denormalize_tacotron_mel(mel)[:,:,:output_seq_len]
 
 
@@ -209,8 +212,8 @@ class TextToSpeech:
     Main entry point into Tortoise.
     """
 
-    def __init__(self, autoregressive_batch_size=None, models_dir=MODELS_DIR, 
-                 enable_redaction=True, kv_cache=False, use_deepspeed=False, half=False, device=None,
+    def __init__(self, autoregressive_batch_size=None, models_dir=MODELS_DIR, diff_decoder_name = None, 
+                 enable_redaction=True, kv_cache=False, use_deepspeed=False, half=False, flow = False, device=None,
                  tokenizer_vocab_file=None, tokenizer_basic=False):
 
         """
@@ -249,11 +252,14 @@ class TextToSpeech:
                                           train_solo_embeddings=False).cpu().eval()
             self.autoregressive.load_state_dict(torch.load(get_model_path('autoregressive.pth', models_dir)), strict=False)
             self.autoregressive.post_init_gpt2_config(use_deepspeed=use_deepspeed, kv_cache=kv_cache, half=self.half)
-            
             self.diffusion = DiffusionTts(model_channels=1024, num_layers=10, in_channels=100, out_channels=200,
                                           in_latent_channels=1024, in_tokens=8193, dropout=0, use_fp16=False, num_heads=16,
-                                          layer_drop=0, unconditioned_percentage=0).cpu().eval()
-            self.diffusion.load_state_dict(torch.load(get_model_path('diffusion_decoder.pth', models_dir)))
+                                          layer_drop=0, unconditioned_percentage=0, flow=flow).cpu().eval()
+            if diff_decoder_name is not None:
+                self.diffusion.load_state_dict(torch.load(os.path.join(models_dir, diff_decoder_name)))
+                print(os.path.join(models_dir, diff_decoder_name), ' is used')
+            else:
+                self.diffusion.load_state_dict(torch.load(get_model_path('diffusion_decoder.pth', models_dir)))
 
         self.clvp = CLVP(dim_text=768, dim_speech=768, dim_latent=768, num_text_tokens=256, text_enc_depth=20,
                          text_seq_len=350, text_heads=12,
@@ -330,7 +336,7 @@ class TextToSpeech:
         with torch.no_grad():
             return self.rlg_auto(torch.tensor([0.0])), self.rlg_diffusion(torch.tensor([0.0]))
 
-    def tts_with_preset(self, text, voice_outpath, index, freeze_ar, preset='fast', **kwargs):
+    def tts_with_preset(self, text, voice_outpath, index, freeze_ar, flow, preset='fast', **kwargs):
         """
         Calls TTS with one of a set of preset generation parameters. Options:
             'ultra_fast': Produces speech at a speed which belies the name of this repo. (Not really, but it's definitely fastest).
@@ -347,11 +353,11 @@ class TextToSpeech:
             'ultra_fast': {'num_autoregressive_samples': 16, 'diffusion_iterations': 30, 'cond_free': False},
             'fast': {'num_autoregressive_samples': 96, 'diffusion_iterations': 80},
             'standard': {'num_autoregressive_samples': 256, 'diffusion_iterations': 200},
-            'high_quality': {'num_autoregressive_samples': 256, 'diffusion_iterations': 80, 'cond_free': True, 'cond_free_k': 1, 'diffusion_temperature': 1.0},
+            'high_quality': {'num_autoregressive_samples': 256, 'diffusion_iterations': 200, 'cond_free': True, 'cond_free_k': 1, 'diffusion_temperature': 1.0},
         }
         settings.update(presets[preset])
         settings.update(kwargs) # allow overriding of preset settings with kwargs
-        return self.tts(text, voice_outpath=voice_outpath, index=index, freeze_ar=freeze_ar, **settings)
+        return self.tts(text, voice_outpath=voice_outpath, index=index, freeze_ar=freeze_ar, flow = flow, **settings)
 
     def tts(self, text, voice_outpath=None, index = 0, voice_samples=None, conditioning_latents=None, k=1, verbose=True, use_deterministic_seed=None,
             return_deterministic_state=False,
@@ -360,7 +366,7 @@ class TextToSpeech:
             # CVVP parameters follow
             cvvp_amount=.0,
             # diffusion generation parameters follow
-            diffusion_iterations=100, cond_free=True, cond_free_k=2, diffusion_temperature=1.0, freeze_ar = False,
+            diffusion_iterations=100, cond_free=True, cond_free_k=2, diffusion_temperature=1.0, freeze_ar = False, flow = False,
             **hf_generate_kwargs):
         """
         Produces an audio clip of the given text being spoken with the given reference voice.
@@ -404,6 +410,8 @@ class TextToSpeech:
                                       are the "mean" prediction of the diffusion network and will sound bland and smeared.
         :param freeze_ar: Whether to use pre-calculated autoregressive latents. True: use pre-calculated autoregressive latents; False: recaculate the autoregressive latents.
                             default: False. 
+        :param flow: Whether to use flow matching models.
+                            default: False.
         ~~OTHER STUFF~~
         :param hf_generate_kwargs: The huggingface Transformers generate API is used for the autoregressive transformer.
                                    Extra keyword args fed to this function get forwarded directly to that API. Documentation
@@ -568,7 +576,7 @@ class TextToSpeech:
                 ) as vocoder:
                     if freeze_ar:
                         latents =  torch.load(os.path.join(voice_outpath,f'latents_{index}.pt')).to(self.device)
-                        mel = do_spectrogram_diffusion(diffusion, diffuser, latents, diffusion_conditioning, temperature=diffusion_temperature, 
+                        mel = do_spectrogram_diffusion(diffusion, diffuser, latents, diffusion_conditioning, temperature=diffusion_temperature, flow = flow,
                                                     verbose=verbose)
                         wav = vocoder.inference(mel)
                         wav_candidates.append(wav.cpu())
@@ -589,7 +597,7 @@ class TextToSpeech:
                                     break
                             # Save the best latents
                             torch.save(latents, os.path.join(voice_outpath,f'latents_{index}.pt'))
-                            mel = do_spectrogram_diffusion(diffusion, diffuser, latents, diffusion_conditioning, temperature=diffusion_temperature, 
+                            mel = do_spectrogram_diffusion(diffusion, diffuser, latents, diffusion_conditioning, temperature=diffusion_temperature, flow = flow,
                                                         verbose=verbose)
                             wav = vocoder.inference(mel)
                             wav_candidates.append(wav.cpu())
@@ -610,7 +618,7 @@ class TextToSpeech:
                         if ctokens > 8:  # 8 tokens gives the diffusion model some "breathing room" to terminate speech.
                             latents = latents[:, :k]
                             break
-                    mel = do_spectrogram_diffusion(diffusion, diffuser, latents, diffusion_conditioning, temperature=diffusion_temperature, 
+                    mel = do_spectrogram_diffusion(diffusion, diffuser, latents, diffusion_conditioning, temperature=diffusion_temperature, flow = flow, 
                                                 verbose=verbose)
                     wav = vocoder.inference(mel)
                     wav_candidates.append(wav.cpu())

@@ -29,12 +29,13 @@ if __name__ == '__main__':
     parser.add_argument('--kv_cache', type=bool, help='If you disable this please wait for a long a time to get the output', default=True)
     parser.add_argument('--half', type=bool, help="float16(half) precision inference if True it's faster and take less vram and ram", default=True)
     parser.add_argument('--freeze_ar',action = 'store_true', help="whether to freeze the autoregressive output")
-    parser.add_argument('--flow',action = 'store_true',help = 'whether to use flow matching model')
+    parser.add_argument('--flow',action = 'store_true',help = 'whether to use flow matching model',default = False)
+    parser.add_argument('--diff_decoder_name',type=str, help= 'Name of pretrained diffusion decoder model checkpoints.', default=None)
 
     args = parser.parse_args()
     if torch.backends.mps.is_available():
         args.use_deepspeed = False
-    tts = TextToSpeech(models_dir=args.model_dir, use_deepspeed=args.use_deepspeed, kv_cache=args.kv_cache, half=args.half)
+    tts = TextToSpeech(models_dir=args.model_dir, diff_decoder_name = args.diff_decoder_name, use_deepspeed=args.use_deepspeed, kv_cache=args.kv_cache, half=args.half, flow = args.flow)
 
     outpath = args.output_path
     outname = args.output_name
@@ -71,7 +72,7 @@ if __name__ == '__main__':
                 continue
             print(args.freeze_ar)
             gen,mel = tts.tts_with_preset(text, voice_samples=voice_samples, conditioning_latents=conditioning_latents,
-                                      preset=args.preset, k=args.candidates, use_deterministic_seed=seed, voice_outpath = voice_outpath, index = j,freeze_ar = args.freeze_ar)
+                                      preset=args.preset, k=args.candidates, use_deterministic_seed=seed, voice_outpath = voice_outpath, index = j,freeze_ar = args.freeze_ar,flow = args.flow)
             print(mel.shape)
             if args.candidates == 1:
                 audio_ = gen.squeeze(0).cpu()

@@ -146,6 +146,7 @@ class DiffusionTts(nn.Module):
             # Parameters for regularization.
             layer_drop=.1,
             unconditioned_percentage=.1,  # This implements a mechanism similar to what is used in classifier-free training.
+            flow = False # wheter this model is flow matching model
     ):
         super().__init__()
 
@@ -155,6 +156,7 @@ class DiffusionTts(nn.Module):
         self.dropout = dropout
         self.num_heads = num_heads
         self.unconditioned_percentage = unconditioned_percentage
+        self.flow = flow
         self.enable_fp16 = use_fp16
         self.layer_drop = layer_drop
 
@@ -290,8 +292,10 @@ class DiffusionTts(nn.Module):
                     unused_params.extend(list(self.latent_conditioner.parameters()))
 
             unused_params.append(self.unconditioned_embedding)
-
-        time_emb = self.time_embed(timestep_embedding(timesteps, self.model_channels,scale=1000))
+        if self.flow:
+            time_emb = self.time_embed(timestep_embedding(timesteps, self.model_channels,scale=1000))
+        else: 
+            time_emb = self.time_embed(timestep_embedding(timesteps, self.model_channels,scale=1))
         code_emb = self.conditioning_timestep_integrator(code_emb, time_emb)
         x = self.inp_block(x)
         x = torch.cat([x, code_emb], dim=1)
